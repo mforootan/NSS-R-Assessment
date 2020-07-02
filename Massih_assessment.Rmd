@@ -1,0 +1,150 @@
+---
+title: "Assessment"
+author: "Massih"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=FALSE, warning=FALSE, message=FALSE)
+
+```
+
+
+####  Load libraries
+```{r library_load}
+library(tidyverse)
+library(readxl)
+library(magrittr)
+```
+<hr></hr>
+
+#### Read in and merge the 2010, 2011, 2012, 2013 & 2014 incidents from laser_incidents_2010-2014.xls file
+##### (assume all fields marked 'UNKN' as missing values)
+```{r 1_get_data}
+laser10 <- read_excel("data/laser_incidents_2010-2014.xls", sheet = "Laser Report 2010")
+laser11 <- read_excel("data/laser_incidents_2010-2014.xls", sheet = "Laser Report 2011")
+laser12 <- read_excel("data/laser_incidents_2010-2014.xls", sheet = "Laser Report 2012")
+laser13 <- read_excel("data/laser_incidents_2010-2014.xls", sheet = "Laser Report 2013")
+laser14 <- read_excel("data/laser_incidents_2010-2014.xls", sheet = "Laser Report 2014")
+
+colnames(laser11)[colnames(laser11)=="AC/ID"] <- "ACID"
+colnames(laser12)[colnames(laser12)=="Aircraft ID"] <- "ACID"
+colnames(laser13)[colnames(laser13)=="Aircraft ID"] <- "ACID"
+colnames(laser14)[colnames(laser14)=="Aircraft ID"] <- "ACID"
+
+laser_all <- rbind(laser10, laser11, laser12, laser13, laser14)
+
+laser_all <- na.omit(laser_all)
+
+laser_all$COLOR <- tolower(laser_all$COLOR)
+laser_all$`Injury Reported` <- tolower(laser_all$`Injury Reported`)
+laser_all$`Injury Reported` <- gsub('\\*',"",laser_all$`Injury Reported`)
+
+laser_all$COLOR <- gsub(" ","", laser_all$COLOR)
+
+laser_all$ALT <- gsub("[A-Z]|[a-z]",0,laser_all$ALT)
+laser_all$ALT <- as.numeric(laser_all$ALT)
+
+
+```
+<hr></hr>
+
+### Excluding missing/unknown values, how many distinct laser color combinations exist for 2010? 
+##### Order of colors does not matter, and assume 'and', 'or', and '/' separated colors are the same
+##### e.g. 'blue/green' == 'blue or green' == 'green and blue'
+
+```{r 2_unique_color_combos_2014}
+laser_all %>% 
+  filter(substr(DATE,1,4) == 2010) %>% 
+  distinct(laser_all, COLOR)
+
+```
+<hr></hr>
+
+### How many incidents are identified as blue (and only blue) in the combined dataset?
+```{r 3_blue_laser_incidents}
+laser_all %>% 
+  filter(COLOR == "blue") %>% 
+  summarise(blue_sum=n())
+```
+<hr></hr>
+
+### In how many different cities are laser incidents reported? Be sure to look at `CITY` and not the airport (`MAJOR CITY`).
+```{r 4_cities}
+laser_all %>% 
+  distinct(laser_all, CITY)
+
+```
+<hr></hr>
+
+### In what cities have *injuries* from lasers been reported?
+
+```{r 5_injury_cities}
+laser_all %>% 
+  filter(`Injury Reported` != "no") %>% 
+  summarise(inj_cnt = n())
+
+
+```
+<hr></hr>
+
+### How many helicopters have been targeted (where 'Type A/C' is HELO)? Create a dataframe of these called 'helo'. 
+```{r 6_helo}
+helo <- laser_all %>% 
+  filter(`TYPE A/C` == 'HELO')
+
+summarise(helo, hel_cnt=n())
+
+```
+<hr></hr>
+
+### In what city did laser incidents with heicopters occur most?
+```{r 7_most_helo_city}
+helo_city <- helo %>% 
+  group_by(CITY) %>% 
+  summarise(cnt=n())
+
+helo_city[helo_city$cnt == max(helo_city$cnt)]
+
+```
+<hr></hr>
+
+### For the combined 2010-2014 dataset, what are the maximum, minimum, and average altitudes reported?
+
+```{r_max_min_mean_ALT}
+summarise(laser_all, alt_max=max(ALT, na.rm = T), alt_min=min(ALT, na.rm = T), alt_avg=mean(ALT, na.rm = T))
+```
+<hr></hr>
+
+### Create a histogram of the altitudes using ggplot2. Do the min/max/mean appear in line with  your calculations?
+```{r 9_ALT_histogram}
+ggplot2::ggplot(laser_all, aes(x=ALT)) + geom_histogram(bins = 70) + scale_x_continuous(limits = c(0,180000))
+```
+<hr></hr>
+
+### Add a column (ALT_Category) to the dataframe based on the aircraft's altitude   
+* set this to 'Low' for aircraft at or below 2000 feet; 
+* 'Medium' for aircraft above 2000 feet but no higher than 8000 feet;
+* 'High' for aircraft above 8000 feet.
+```{r 10_create_ALT_Category}
+
+laser_cat <- mutate(laser_all, 
+       ALT_Category = case_when(
+         ALT > 8000 ~ "High",
+         ALT > 2000 ~ "Medium",
+         ALT <= 2000 ~ "Low"
+       ))
+```
+<hr></hr>
+
+### Create a plot showing DATE on the x-axis and ALT on the y-axis; color the points on this plot according to the ALT_Category
+
+```{r 11_ALT_plot}
+ggplot2::ggplot(laser_cat, aes(x=DATE, y=ALT, color=ALT_Category)) + geom_point()
+```
+
+
